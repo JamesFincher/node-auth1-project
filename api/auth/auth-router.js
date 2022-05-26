@@ -1,26 +1,13 @@
 // Require `checkUsernameFree`, `checkUsernameExists` and `checkPasswordLength`
 // middleware functions from `auth-middleware.js`. You will need them here!
-const router = require('express').Router();
-const aMiddleware = require('./auth-middleware')
-const uModel = require('../users/users-model')
 
-const validatedPayload = (req, res, next) => { next() }
+const router = require('express').Router()
+const bcrypt = require('bcryptjs')
+const Users = require('../users/users-model')
 
-router.post('/register', validatedPayload, (req, res, next) => {
-  console.log('register hit')
-})
-router.post('/login', validatedPayload, (req, res, next) => {
-  console.log('login hit')
-})
-router.get('/logout', validatedPayload, (req, res, next) => {
-  console.log('logout hit')
-})
-router.post('/register', validatedPayload, (req, res, next) => {
-  console.log('testing')
-})
+const { checkUsernameFree, checkUsernameExists, checkPasswordLength } = require('./auth-middleware')
 
 /**
-
   1 [POST] /api/auth/register { "username": "sue", "password": "1234" }
 
   response:
@@ -43,6 +30,21 @@ router.post('/register', validatedPayload, (req, res, next) => {
   }
  */
 
+  router.post('/register', checkUsernameFree, checkPasswordLength, async (req, res, next) => {
+    try {
+      const { username, password } = req.body
+      const hash = bcrypt.hashSync(password, 12)
+      const user = { username, password: hash }
+      const newUser = await Users.add(user)
+      res.status(200).json({ 
+        user_id: newUser.user_id,
+        username: newUser.username
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
 
 /**
   2 [POST] /api/auth/login { "username": "sue", "password": "1234" }
@@ -59,6 +61,24 @@ router.post('/register', validatedPayload, (req, res, next) => {
     "message": "Invalid credentials"
   }
  */
+
+  router.post('/login', checkUsernameExists, async (req, res, next) => {
+    try {
+      const { username, password } = req.body
+      const user = req.user
+      const correctCreds = bcrypt.compareSync(password, user.password)
+
+      if (correctCreds) {
+        req.session.user = user
+        res.status(200).json({ message: `Welcome ${username}!`})
+      } else {
+        res.status(401).json({ message: `Invalid credentials`})
+      }
+
+    } catch (error) {
+      next(error)
+    }
+  })
 
 
 /**
@@ -77,7 +97,26 @@ router.post('/register', validatedPayload, (req, res, next) => {
   }
  */
 
+  router.get('/logout', (req, res, next) => {
+    if (req.session.user) {
+      req.session.destroy(err => {
+        if (err != null) {
+          next(err)
+        } else {
+          res.status(200).json({ message: 'logged out'})
+        }
+      })
+    } else {
+      res.status(200).json({ message: 'no session'})
+    }
+  })
+
+  router.get('/checksession', (req, res) => {
+    res.json(req.session)
+  })
+
+  //could create endpoint that just returns !!req.session.user which just tells you if there is a logged in session or not
+
  
 // Don't forget to add the router to the `exports` object so it can be required in other modules
-
 module.exports = router
